@@ -41,7 +41,7 @@
 [CmdletBinding()]
 param(
     [Alias("SecurityUpdate")]
-    [Parameter(Mandatory = $true, Position = 0, HelpMessage = "Date string for the report query in format YYYY-MMM or YYYY-MM")]
+    [Parameter(Position = 0, HelpMessage = "Date string for the report query in format YYYY-MMM or YYYY-MM")]
     [string]$ReportDate,
 
     [ValidateSet("MSRC", "CVE.org")]
@@ -228,6 +228,10 @@ function Get-HighestRatedVulnerabilities {
 
 # Main script execution
 try {
+    if ([string]::IsNullOrWhiteSpace($ReportDate)) {
+        # Set to current month if not provided, always use english month name
+        $ReportDate = (Get-Date).ToString("yyyy-MMM", [System.Globalization.CultureInfo]::InvariantCulture)
+    }
     # Validate date format
     if ( $ReportDate -match '^\d{4}-\d{2}$' ) {
         $ReportMonth = $ReportDate -replace '^\d{4}-(\d{2})$', '$1'
