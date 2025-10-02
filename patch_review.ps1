@@ -255,7 +255,12 @@ try {
     
     # Extract data
     $Title = if ($Response.DocumentTitle.Value) { $Response.DocumentTitle.Value } else { 'Release not found' }
-    $AllVulns = $Response.Vulnerability ?? @()
+    if ( $null -eq $Response.Vulnerability ) {
+        $AllVulns = @()
+    } else {
+        $AllVulns = $Response.Vulnerability
+    }
+    
     # Filter out entries with null or empty Title
     $AllVulns = $AllVulns | where { -not ( [string]::IsNullOrWhiteSpace($_.Title) ) }
 
