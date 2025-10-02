@@ -1,23 +1,23 @@
 <#
 .SYNOPSIS
     PatchReview - Analyze Microsoft Patch Tuesday vulnerability statistics
-    
+
 .DESCRIPTION
     This script retrieves and analyzes vulnerability data from the Microsoft Security Response Center (MSRC) API
     for a given Patch Tuesday release. It provides statistics on vulnerability types, exploitation status,
     and CVSS scores.
-    
+
     Original Python version Copyright (C) 2021 Kevin Breen, Immersive Labs
     https://github.com/Immersive-Labs-Sec/msrc-api
-    
+
     PowerShell port by Fabian Bader
-    
+
 .PARAMETER SecurityUpdate
     Date string for the report query in format YYYY-MMM (e.g., 2024-Oct)
-    
+
 .EXAMPLE
     .\patch_review.ps1 -SecurityUpdate "2024-Oct"
-    
+
 .NOTES
     Permission is hereby granted, free of charge, to any person obtaining a copy
     of this software and associated documentation files (the "Software"), to deal
@@ -83,7 +83,7 @@ function ConvertTo-MonthName {
         [Parameter(Mandatory = $true)]
         [string]$MonthNumber
     )
-    
+
     $MonthNames = @{
         '01' = 'Jan'
         '02' = 'Feb'
@@ -98,7 +98,7 @@ function ConvertTo-MonthName {
         '11' = 'Nov'
         '12' = 'Dec'
     }
-    
+
     return $MonthNames[$MonthNumber]
 }
 
@@ -106,7 +106,7 @@ function Write-Header {
     param(
         [string]$Title
     )
-    
+
     Write-Host "[+] Microsoft Patch Tuesday Stats" -ForegroundColor Green
     Write-Host "[+] https://github.com/f-bader/msrc-api-ps" -ForegroundColor Green
     Write-Host "[+] $Title" -ForegroundColor Green
@@ -117,9 +117,9 @@ function Get-VulnerabilityCountByType {
         [string]$SearchType,
         [array]$AllVulns
     )
-    
+
     $Counter = 0
-    
+
     foreach ($Vuln in $AllVulns) {
         foreach ($Threat in $Vuln.Threats) {
             if ($Threat.Type -eq 0) {
@@ -139,7 +139,7 @@ function Get-VulnerabilityCountByType {
             }
         }
     }
-    
+
     return $Counter
 }
 
@@ -147,18 +147,18 @@ function Get-ExploitedVulnerabilities {
     param(
         [array]$AllVulns
     )
-    
+
     foreach ($Vuln in $AllVulns) {
         $CvssScore = 0.0
         $CvssSets = $Vuln.CVSSScoreSets
-        
+
         if ($null -ne $CvssSets -and $CvssSets.Count -gt 0) {
             $CvssScore = $CvssSets[0].BaseScore
             if ($null -eq $CvssScore) {
                 $CvssScore = 0.0
             }
         }
-        
+
         foreach ($Threat in $Vuln.Threats) {
             if ($Threat.Type -eq 1) {
                 $Description = $Threat.Description.Value
@@ -176,11 +176,28 @@ function Get-ExploitedVulnerabilities {
     }
 }
 
+function Get-PubliclyDisclosedVulnerabilities {
+    param(
+        [array]$AllVulns
+    )
+
+    foreach ($Vuln in $AllVulns) {
+        $AssosiatedThreatDescription = ($Vuln.Threats.Description.Value) -split ";" | Select-Object -Unique
+        if ($AssosiatedThreatDescription -contains 'Publicly Disclosed:Yes') {
+            @{
+                CVE               = $Vuln.CVE
+                Title             = $Vuln.Title.Value
+                PubliclyDisclosed = $true
+            }
+        }
+    }
+}
+
 function Get-ExploitationLikely {
     param(
         [array]$AllVulns
     )
-   
+
     foreach ($Vuln in $AllVulns) {
         foreach ($Threat in $Vuln.Threats) {
             if ($Threat.Type -eq 1) {
@@ -204,18 +221,18 @@ function Get-HighestRatedVulnerabilities {
         [array]$AllVulns,
         [float]$BaseScore = 8.0
     )
-    
+
     foreach ($Vuln in $AllVulns) {
         $CvssScore = 0.0
         $CvssSets = $Vuln.CVSSScoreSets
-        
+
         if ($null -ne $CvssSets -and $CvssSets.Count -gt 0) {
             $CvssScore = $CvssSets[0].BaseScore
             if ($null -eq $CvssScore) {
                 $CvssScore = 0.0
             }
         }
-        
+
         if ($CvssScore -ge $BaseScore) {
             @{
                 CVE       = $Vuln.CVE
@@ -243,16 +260,16 @@ try {
         Write-Host "[!] Invalid date format. Please use 'YYYY-MMM' or 'YYYY-MM' (e.g., 2024-Oct or 2024-10) " -ForegroundColor Red
         exit 1
     }
-    
+
     # Get the security release data
     Write-Verbose "Fetching data from MSRC API for $ReportDate"
     $Response = Invoke-RestMethod -Uri "$BaseUrl/cvrf/$ReportDate" -Headers $Headers -Method Get -ErrorAction Stop
-    
+
     if ($null -eq $Response) {
         Write-Host "[!] No release notes found for $ReportDate" -ForegroundColor Red
         exit 1
     }
-    
+
     # Extract data
     $Title = if ($Response.DocumentTitle.Value) { $Response.DocumentTitle.Value } else { 'Release not found' }
     if ( $null -eq $Response.Vulnerability ) {
@@ -260,9 +277,9 @@ try {
     } else {
         $AllVulns = $Response.Vulnerability
     }
-    
+
     # Filter out entries with null or empty Title
-    $AllVulns = $AllVulns | where { -not ( [string]::IsNullOrWhiteSpace($_.Title) ) }
+    $AllVulns = $AllVulns | Where-Object { -not ( [string]::IsNullOrWhiteSpace($_.Title) ) }
 
     # Get exploited vulnerabilities
     $Exploited = Get-ExploitedVulnerabilities -AllVulns $AllVulns
@@ -270,6 +287,8 @@ try {
     $Exploitation = Get-ExploitationLikely -AllVulns $AllVulns
     # Get highest rated vulnerabilities
     $HighestRated = Get-HighestRatedVulnerabilities -AllVulns $AllVulns -BaseScore $BaseScore
+    # Get publicly disclosed vulnerabilities
+    $PubliclyDisclosed = Get-PubliclyDisclosedVulnerabilities -AllVulns $AllVulns
 
     # Add new properties to the vulnerabilities for easier output formatting
     foreach ($Vuln in $AllVulns) {
@@ -301,10 +320,33 @@ try {
         $Vuln | Add-Member -MemberType NoteProperty -Name "HighestRated" -Value $isHighestRated -Force
         # Add URL property
         $Vuln | Add-Member -MemberType NoteProperty -Name "URL" -Value "$CVELinkUri$($Vuln.CVE)" -Force
+        # Add property for publicly disclosed vulnerabilities
+        $isPubliclyDisclosed = $false
+        foreach ($Expl in $PubliclyDisclosed) {
+            if ($Vuln.CVE -eq $Expl.CVE) {
+                $isPubliclyDisclosed = $true
+                break
+            }
+        }
+        $Vuln | Add-Member -MemberType NoteProperty -Name "PubliclyDisclosed" -Value $isPubliclyDisclosed -Force
+
+        # Set CvssScore property
+        $CvssScore = "n/a"
+        if ($null -ne $Vuln.CVSSScoreSets -and $Vuln.CVSSScoreSets.Count -gt 0) {
+            $CvssScore = $Vuln.CVSSScoreSets[0].BaseScore
+        }
+        $Vuln | Add-Member -MemberType NoteProperty -Name "CvssScore" -Value $CvssScore -Force
+
+        # Replace Title object with its value
+        if ($null -ne $Vuln.Title) {
+            $Vuln | Add-Member -MemberType NoteProperty -Name "Title" -Value $Vuln.Title.Value -Force
+        } else {
+            $Vuln | Add-Member -MemberType NoteProperty -Name "Title" -Value "N/A" -Force
+        }
     }
 
-    $OutputData = $AllVulns | Select-Object CVE, @{Name = "Title"; Expression = { $_.Title.Value } }, @{Name = "CvssScore"; Expression = { if ($null -ne $_.CVSSScoreSets -and $_.CVSSScoreSets.Count -gt 0) { $_.CVSSScoreSets[0].BaseScore } else { $null } } }, Exploited, ExploitationLikely, HighestRated, URL
-    
+    $OutputData = $AllVulns | Select-Object CVE, @{Name = "Title"; Expression = { $_.Title.Value } }, CvssScore, Exploited, ExploitationLikely, HighestRated, PubliclyDisclosed, URL
+
     if ($Output -eq "psobject") {
         $OutputData
         exit 0
@@ -314,45 +356,48 @@ try {
         $OutputData | ConvertTo-Json -Depth 3
         exit 0
     }
-    
+
     if ($Output -eq "human-readable") {
         # Human readable output
 
         # Display header
         Write-Header -Title $Title
-    
+
         # Display total vulnerabilities
         Write-Host "[+] Found a total of $($AllVulns.Count) vulnerabilities" -ForegroundColor Green
-    
+
         # Count vulnerabilities by type
         foreach ($VulnType in $VulnTypes) {
             $Count = Get-VulnerabilityCountByType -SearchType $VulnType -AllVulns $AllVulns
             Write-Host "  [-] $Count $VulnType Vulnerabilities" -ForegroundColor Cyan
         }
-    
+
         # Display exploited vulnerabilities
+        $Exploited = $AllVulns | Where-Object { $_.Exploited -eq $true } | Sort-Object -Property CvssScore -Descending -ErrorAction SilentlyContinue
         Write-Host "[+] Found $($Exploited.Count) exploited in the wild" -ForegroundColor Green
         foreach ($CVE in $Exploited) {
+            Write-Host "  [-] $($CVE.CVE)- $($CVE.CvssScore) - $($CVE.Title)" -ForegroundColor Red
+        }
+
+        # Display publicly disclosed vulnerabilities
+        $PubliclyDisclosed = $AllVulns | Where-Object { $_.PubliclyDisclosed -eq $true } | Sort-Object -Property CvssScore -Descending
+        Write-Host "[+] Found $($PubliclyDisclosed.Count) already publicly disclosed vulnerabilities" -ForegroundColor Green
+        foreach ($CVE in $PubliclyDisclosed) {
             Write-Host "  [-] $($CVE.CVE) - $($CVE.CvssScore) - $($CVE.Title)" -ForegroundColor Red
         }
-    
+
         # Display highest rated vulnerabilities
+        $HighestRated = $AllVulns | Where-Object { $_.HighestRated -eq $true } | Sort-Object -Property CvssScore -Descending
         Write-Host "[+] Highest Rated Vulnerabilities - CVE >= $BaseScore" -ForegroundColor Green
         foreach ($CVE in $HighestRated) {
-            if ($null -eq $CVE.CvssScore) {
-                $CVE.CvssScore = "N/A"
-            }
             Write-Host "  [-] $($CVE.CVE) - $($CVE.CvssScore) - $($CVE.Title)" -ForegroundColor Yellow
         }
-    
-    
+
         # Display exploitation likely vulnerabilities
+        $Exploitation = $AllVulns | Where-Object { $_.ExploitationLikely -eq $true } | Sort-Object -Property CvssScore -Descending
         Write-Host "[+] Found $($Exploitation.Count) vulnerabilities more likely to be exploited" -ForegroundColor Green
         foreach ($CVE in $Exploitation) {
-            if ($null -eq $CVE.CvssScore) {
-                $CVE.CvssScore = "N/A"
-            }
-            Write-Host "  [-] $($CVE.CVE) - $($CVE.CvssScore) - $($CVELinkUri)$($CVE.CVE)" -ForegroundColor Yellow
+            Write-Host "  [-] $($CVE.CVE) - $($CVE.CvssScore) - $($CVE.Title) - $($CVELinkUri)$($CVE.CVE)" -ForegroundColor Yellow
         }
     }
 } catch {
