@@ -243,6 +243,24 @@ function Get-HighestRatedVulnerabilities {
     }
 }
 
+function Format-CvssScore {
+    param(
+        [string]$Score,
+        [int]$MaxLengthOfCVEScore = 4
+    )
+    # Force american number format with dot as decimal separator
+    if ($Score -eq "n/a") {
+        return $Score.PadLeft($MaxLengthOfCVEScore)
+    } else {
+        $CurrentCulture = [System.Globalization.CultureInfo]::CurrentCulture
+        [System.Globalization.CultureInfo]::CurrentCulture = [System.Globalization.CultureInfo]::CreateSpecificCulture("en-US")
+        $FormattedScore = "{0:N1}" -f [float]$Score
+        $FormattedScore = $FormattedScore.PadLeft($MaxLengthOfCVEScore)
+        [System.Globalization.CultureInfo]::CurrentCulture = $CurrentCulture
+    }
+    return $FormattedScore
+}
+
 # Main script execution
 try {
     if ([string]::IsNullOrWhiteSpace($ReportDate)) {
@@ -372,32 +390,44 @@ try {
             Write-Host "  [-] $Count $VulnType Vulnerabilities" -ForegroundColor Cyan
         }
 
+        $MaxLengthOfCVE = $AllVulns.CVE | Measure-Object -Property Length -Maximum | Select-Object -ExpandProperty Maximum
+        $MaxCVEScore = $AllVulns.CvssScore | Where-Object { $_ -ne "n/a" } | Measure-Object -Maximum | Select-Object -ExpandProperty Maximum
+        if ( $MaxCVEScore -eq 10 ) {
+            $MaxLengthOfCVEScore = 4
+        } else {
+            $MaxLengthOfCVEScore = 3
+        }
+
         # Display exploited vulnerabilities
         $Exploited = $AllVulns | Where-Object { $_.Exploited -eq $true } | Sort-Object -Property CvssScore -Descending -ErrorAction SilentlyContinue
         Write-Host "[+] Found $($Exploited.Count) exploited in the wild" -ForegroundColor Green
         foreach ($CVE in $Exploited) {
-            Write-Host "  [-] $($CVE.CVE)- $($CVE.CvssScore) - $($CVE.Title)" -ForegroundColor Red
+            $FormattedScore = Format-CvssScore -Score $CVE.CvssScore -MaxLengthOfCVEScore $MaxLengthOfCVEScore
+            Write-Host "  [-] $($CVE.CVE.PadRight($MaxLengthOfCVE))- $FormattedScore - $($CVE.Title)" -ForegroundColor Red
         }
 
         # Display publicly disclosed vulnerabilities
         $PubliclyDisclosed = $AllVulns | Where-Object { $_.PubliclyDisclosed -eq $true } | Sort-Object -Property CvssScore -Descending
         Write-Host "[+] Found $($PubliclyDisclosed.Count) already publicly disclosed vulnerabilities" -ForegroundColor Green
         foreach ($CVE in $PubliclyDisclosed) {
-            Write-Host "  [-] $($CVE.CVE) - $($CVE.CvssScore) - $($CVE.Title)" -ForegroundColor Red
+            $FormattedScore = Format-CvssScore -Score $CVE.CvssScore -MaxLengthOfCVEScore $MaxLengthOfCVEScore
+            Write-Host "  [-] $($CVE.CVE.PadRight($MaxLengthOfCVE)) - $FormattedScore - $($CVE.Title)" -ForegroundColor Red
         }
 
         # Display highest rated vulnerabilities
         $HighestRated = $AllVulns | Where-Object { $_.HighestRated -eq $true } | Sort-Object -Property CvssScore -Descending
         Write-Host "[+] Highest Rated Vulnerabilities - CVE >= $BaseScore" -ForegroundColor Green
         foreach ($CVE in $HighestRated) {
-            Write-Host "  [-] $($CVE.CVE) - $($CVE.CvssScore) - $($CVE.Title)" -ForegroundColor Yellow
+            $FormattedScore = Format-CvssScore -Score $CVE.CvssScore -MaxLengthOfCVEScore $MaxLengthOfCVEScore
+            Write-Host "  [-] $($CVE.CVE.PadRight($MaxLengthOfCVE)) - $FormattedScore - $($CVE.Title)" -ForegroundColor Yellow
         }
 
         # Display exploitation likely vulnerabilities
         $Exploitation = $AllVulns | Where-Object { $_.ExploitationLikely -eq $true } | Sort-Object -Property CvssScore -Descending
         Write-Host "[+] Found $($Exploitation.Count) vulnerabilities more likely to be exploited" -ForegroundColor Green
         foreach ($CVE in $Exploitation) {
-            Write-Host "  [-] $($CVE.CVE) - $($CVE.CvssScore) - $($CVE.Title) - $($CVELinkUri)$($CVE.CVE)" -ForegroundColor Yellow
+            $FormattedScore = Format-CvssScore -Score $CVE.CvssScore -MaxLengthOfCVEScore $MaxLengthOfCVEScore
+            Write-Host "  [-] $($CVE.CVE.PadRight($MaxLengthOfCVE)) - $FormattedScore - $($CVE.Title) - $($CVELinkUri)$($CVE.CVE)" -ForegroundColor Yellow
         }
     }
 } catch {
