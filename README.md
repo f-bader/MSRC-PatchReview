@@ -2,6 +2,8 @@
 
 A PowerShell variant of the amazing patch_review.py by [kevthehermit](https://github.com/Immersive-Labs-Sec/msrc-api)
 
+![A screenshot of the actual command line output for the month September 2025](./preview.png)
+
 ## Usage
 
 To get a report for the current month, just run the script without any additional parameters
