@@ -403,7 +403,7 @@ try {
         Write-Host "[+] Found $($Exploited.Count) exploited in the wild" -ForegroundColor Green
         foreach ($CVE in $Exploited) {
             $FormattedScore = Format-CvssScore -Score $CVE.CvssScore -MaxLengthOfCVEScore $MaxLengthOfCVEScore
-            Write-Host "  [-] $($CVE.CVE.PadRight($MaxLengthOfCVE))- $FormattedScore - $($CVE.Title)" -ForegroundColor Red
+            Write-Host "  [-] $($CVE.CVE.PadRight($MaxLengthOfCVE)) - $FormattedScore - $($CVE.Title)" -ForegroundColor Red
         }
 
         # Display publicly disclosed vulnerabilities
