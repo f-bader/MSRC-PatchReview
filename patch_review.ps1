@@ -15,6 +15,23 @@
 .PARAMETER SecurityUpdate
     Date string for the report query in format YYYY-MMM (e.g., 2024-Oct)
 
+.PARAMETER CVELink
+    Choose the CVE link format for output, either "MSRC" or "CVE.org". Default is "MSRC".
+
+.PARAMETER BaseScore
+    Base CVSS score threshold for highlighting high-severity vulnerabilities. Default is 8.0
+    Vulnerabilities with a CVSS score equal to or greater than this value will be highlighted in the output.
+
+.PARAMETER Output
+    Output format: "human-readable" (default), "json", or "psobject".
+    - "human-readable": Outputs a formatted text report to the console.
+    - "json": Outputs the data in JSON format.
+    - "psobject": Outputs the data as PowerShell objects for further processing.
+
+.PARAMETER IncludeCriticality
+    Include vulnerability criticality in the output (e.g., Critical, Important, Moderate, Low).
+    This will also highlight vulnerabilities with Critical rating as high-severity regardless of CVSS score.
+
 .EXAMPLE
     .\patch_review.ps1 -SecurityUpdate "2024-Oct"
 
@@ -50,7 +67,9 @@ param(
     [float]$BaseScore = 8.0,
 
     [ValidateSet("human-readable", "json", "psobject")]
-    [string]$Output = "human-readable"
+    [string]$Output = "human-readable",
+
+    [switch]$IncludeCriticality
 
 )
 
@@ -149,23 +168,61 @@ function Get-ExploitedVulnerabilities {
     )
 
     foreach ($Vuln in $AllVulns) {
-        $CvssScore = 0.0
-        $CvssSets = $Vuln.CVSSScoreSets
-
-        if ($null -ne $CvssSets -and $CvssSets.Count -gt 0) {
-            $CvssScore = $CvssSets[0].BaseScore
-            if ($null -eq $CvssScore) {
-                $CvssScore = 0.0
-            }
-        }
-
         foreach ($Threat in $Vuln.Threats) {
             if ($Threat.Type -eq 1) {
                 $Description = $Threat.Description.Value
                 if ($Description -match 'Exploited:Yes') {
                     @{
                         CVE       = $Vuln.CVE
-                        CvssScore = $CvssScore
+                        Title     = $Vuln.Title.Value
+                        Exploited = $true
+                    }
+                    break
+                }
+            }
+        }
+    }
+}
+
+function Get-VulnerabilityCriticality {
+    param(
+        [array]$AllVulns
+    )
+
+    $PossibleValues = @(
+        "Critical",
+        "Important",
+        "Moderate",
+        "Low"
+    )
+    foreach ($Vuln in $AllVulns) {
+        $Threats = $Vuln.Threats | Where-Object { $_.Type -eq 3 }
+        foreach ($Threat in $Threats) {
+            $Description = $Threat.Description.Value -split ";" | Select-Object -Unique
+            if ($PossibleValues -contains $Description) {
+                @{
+                    CVE         = $Vuln.CVE
+                    Title       = $Vuln.Title.Value
+                    Criticality = $Description
+                }
+                break
+            }
+        }
+    }
+}
+
+function Get-ExploitedVulnerabilities {
+    param(
+        [array]$AllVulns
+    )
+
+    foreach ($Vuln in $AllVulns) {
+        foreach ($Threat in $Vuln.Threats) {
+            if ($Threat.Type -eq 1) {
+                $Description = $Threat.Description.Value
+                if ($Description -match 'Exploited:Yes') {
+                    @{
+                        CVE       = $Vuln.CVE
                         Title     = $Vuln.Title.Value
                         Exploited = $true
                     }
@@ -182,8 +239,8 @@ function Get-PubliclyDisclosedVulnerabilities {
     )
 
     foreach ($Vuln in $AllVulns) {
-        $AssosiatedThreatDescription = ($Vuln.Threats.Description.Value) -split ";" | Select-Object -Unique
-        if ($AssosiatedThreatDescription -contains 'Publicly Disclosed:Yes') {
+        $AssociatedThreatDescription = ($Vuln.Threats.Description.Value) -split ";" | Select-Object -Unique
+        if ($AssociatedThreatDescription -contains 'Publicly Disclosed:Yes') {
             @{
                 CVE               = $Vuln.CVE
                 Title             = $Vuln.Title.Value
@@ -205,39 +262,11 @@ function Get-ExploitationLikely {
                 if ($Description -match 'Exploitation More Likely') {
                     @{
                         CVE                    = $Vuln.CVE
-                        CvssScore              = $Vuln.CVSSScoreSets[0].BaseScore
                         Title                  = $Vuln.Title.Value
                         ExploitationMoreLikely = $true
                     }
                     break
                 }
-            }
-        }
-    }
-}
-
-function Get-HighestRatedVulnerabilities {
-    param(
-        [array]$AllVulns,
-        [float]$BaseScore = 8.0
-    )
-
-    foreach ($Vuln in $AllVulns) {
-        $CvssScore = 0.0
-        $CvssSets = $Vuln.CVSSScoreSets
-
-        if ($null -ne $CvssSets -and $CvssSets.Count -gt 0) {
-            $CvssScore = $CvssSets[0].BaseScore
-            if ($null -eq $CvssScore) {
-                $CvssScore = 0.0
-            }
-        }
-
-        if ($CvssScore -ge $BaseScore) {
-            @{
-                CVE       = $Vuln.CVE
-                CvssScore = $CvssScore
-                Title     = $Vuln.Title.Value
             }
         }
     }
@@ -303,10 +332,10 @@ try {
     $Exploited = Get-ExploitedVulnerabilities -AllVulns $AllVulns
     # Get exploitation likely vulnerabilities
     $Exploitation = Get-ExploitationLikely -AllVulns $AllVulns
-    # Get highest rated vulnerabilities
-    $HighestRated = Get-HighestRatedVulnerabilities -AllVulns $AllVulns -BaseScore $BaseScore
     # Get publicly disclosed vulnerabilities
     $PubliclyDisclosed = Get-PubliclyDisclosedVulnerabilities -AllVulns $AllVulns
+    # Get vulnerability criticality
+    $VulnerabilityCriticality = Get-VulnerabilityCriticality -AllVulns $AllVulns
 
     # Add new properties to the vulnerabilities for easier output formatting
     foreach ($Vuln in $AllVulns) {
@@ -328,14 +357,7 @@ try {
             }
         }
         $Vuln | Add-Member -MemberType NoteProperty -Name "ExploitationLikely" -Value $isExploitationLikely -Force
-        $isHighestRated = $false
-        foreach ($Expl in $HighestRated) {
-            if ($Vuln.CVE -eq $Expl.CVE) {
-                $isHighestRated = $true
-                break
-            }
-        }
-        $Vuln | Add-Member -MemberType NoteProperty -Name "HighestRated" -Value $isHighestRated -Force
+
         # Add URL property
         $Vuln | Add-Member -MemberType NoteProperty -Name "URL" -Value "$CVELinkUri$($Vuln.CVE)" -Force
         # Add property for publicly disclosed vulnerabilities
@@ -361,9 +383,31 @@ try {
         } else {
             $Vuln | Add-Member -MemberType NoteProperty -Name "Title" -Value "N/A" -Force
         }
+
+        # Add property for vulnerability criticality
+        $Criticality = "N/A"
+        foreach ($Crit in $VulnerabilityCriticality) {
+            if ($Vuln.CVE -eq $Crit.CVE) {
+                $Criticality = $Crit.Criticality
+                break
+            }
+        }
+        $Vuln | Add-Member -MemberType NoteProperty -Name "Criticality" -Value $Criticality -Force
+
+        # Add property for highest rated vulnerabilities
+        $isHighestRated = $false
+        if ($CvssScore -ne "n/a") {
+            if ( $IncludeCriticality -and $Criticality -eq "Critical" ) {
+                $isHighestRated = $true
+            }
+            if ([float]$CvssScore -ge $BaseScore) {
+                $isHighestRated = $true
+            }
+        }
+        $Vuln | Add-Member -MemberType NoteProperty -Name "HighestRated" -Value $isHighestRated -Force
     }
 
-    $OutputData = $AllVulns | Select-Object CVE, @{Name = "Title"; Expression = { $_.Title.Value } }, CvssScore, Exploited, ExploitationLikely, HighestRated, PubliclyDisclosed, URL
+    $OutputData = $AllVulns | Select-Object CVE, Title, CvssScore, Criticality, Exploited, ExploitationLikely, HighestRated, PubliclyDisclosed, URL
 
     if ($Output -eq "psobject") {
         $OutputData
@@ -392,6 +436,7 @@ try {
 
         $MaxLengthOfCVE = $AllVulns.CVE | Measure-Object -Property Length -Maximum | Select-Object -ExpandProperty Maximum
         $MaxCVEScore = $AllVulns.CvssScore | Where-Object { $_ -ne "n/a" } | Measure-Object -Maximum | Select-Object -ExpandProperty Maximum
+        $MaxLengthOfCriticality = $AllVulns.Criticality | Where-Object { $_ -ne "N/A" } | Measure-Object -Property Length -Maximum | Select-Object -ExpandProperty Maximum
         if ( $MaxCVEScore -eq 10 ) {
             $MaxLengthOfCVEScore = 4
         } else {
@@ -403,7 +448,11 @@ try {
         Write-Host "[+] Found $($Exploited.Count) exploited in the wild" -ForegroundColor Green
         foreach ($CVE in $Exploited) {
             $FormattedScore = Format-CvssScore -Score $CVE.CvssScore -MaxLengthOfCVEScore $MaxLengthOfCVEScore
-            Write-Host "  [-] $($CVE.CVE.PadRight($MaxLengthOfCVE)) - $FormattedScore - $($CVE.Title)" -ForegroundColor Red
+            if ($IncludeCriticality) {
+                Write-Host "  [-] $($CVE.CVE.PadRight($MaxLengthOfCVE)) - $FormattedScore - $($CVE.Criticality.PadRight($MaxLengthOfCriticality)) - $($CVE.Title)" -ForegroundColor Red
+            } else {
+                Write-Host "  [-] $($CVE.CVE.PadRight($MaxLengthOfCVE)) - $FormattedScore - $($CVE.Title)" -ForegroundColor Red
+            }
         }
 
         # Display publicly disclosed vulnerabilities
@@ -411,7 +460,11 @@ try {
         Write-Host "[+] Found $($PubliclyDisclosed.Count) already publicly disclosed vulnerabilities" -ForegroundColor Green
         foreach ($CVE in $PubliclyDisclosed) {
             $FormattedScore = Format-CvssScore -Score $CVE.CvssScore -MaxLengthOfCVEScore $MaxLengthOfCVEScore
-            Write-Host "  [-] $($CVE.CVE.PadRight($MaxLengthOfCVE)) - $FormattedScore - $($CVE.Title)" -ForegroundColor Red
+            if ($IncludeCriticality) {
+                Write-Host "  [-] $($CVE.CVE.PadRight($MaxLengthOfCVE)) - $FormattedScore - $($CVE.Criticality.PadRight($MaxLengthOfCriticality)) - $($CVE.Title)" -ForegroundColor Red
+            } else {
+                Write-Host "  [-] $($CVE.CVE.PadRight($MaxLengthOfCVE)) - $FormattedScore - $($CVE.Title)" -ForegroundColor Red
+            }
         }
 
         # Display highest rated vulnerabilities
@@ -419,7 +472,11 @@ try {
         Write-Host "[+] Highest Rated Vulnerabilities - CVE >= $BaseScore" -ForegroundColor Green
         foreach ($CVE in $HighestRated) {
             $FormattedScore = Format-CvssScore -Score $CVE.CvssScore -MaxLengthOfCVEScore $MaxLengthOfCVEScore
-            Write-Host "  [-] $($CVE.CVE.PadRight($MaxLengthOfCVE)) - $FormattedScore - $($CVE.Title)" -ForegroundColor Yellow
+            if ($IncludeCriticality) {
+                Write-Host "  [-] $($CVE.CVE.PadRight($MaxLengthOfCVE)) - $FormattedScore - $($CVE.Criticality.PadRight($MaxLengthOfCriticality)) - $($CVE.Title)" -ForegroundColor Yellow
+            } else {
+                Write-Host "  [-] $($CVE.CVE.PadRight($MaxLengthOfCVE)) - $FormattedScore - $($CVE.Title)" -ForegroundColor Yellow
+            }
         }
 
         # Display exploitation likely vulnerabilities
@@ -427,7 +484,11 @@ try {
         Write-Host "[+] Found $($Exploitation.Count) vulnerabilities more likely to be exploited" -ForegroundColor Green
         foreach ($CVE in $Exploitation) {
             $FormattedScore = Format-CvssScore -Score $CVE.CvssScore -MaxLengthOfCVEScore $MaxLengthOfCVEScore
-            Write-Host "  [-] $($CVE.CVE.PadRight($MaxLengthOfCVE)) - $FormattedScore - $($CVE.Title) - $($CVELinkUri)$($CVE.CVE)" -ForegroundColor Yellow
+            if ($IncludeCriticality) {
+                Write-Host "  [-] $($CVE.CVE.PadRight($MaxLengthOfCVE)) - $FormattedScore - $($CVE.Criticality.PadRight($MaxLengthOfCriticality)) - $($CVE.Title) - $($CVELinkUri)$($CVE.CVE)" -ForegroundColor Yellow
+            } else {
+                Write-Host "  [-] $($CVE.CVE.PadRight($MaxLengthOfCVE)) - $FormattedScore - $($CVE.Title) - $($CVELinkUri)$($CVE.CVE)" -ForegroundColor Yellow
+            }
         }
     }
 } catch {
