@@ -469,7 +469,11 @@ try {
 
         # Display highest rated vulnerabilities
         $HighestRated = $AllVulns | Where-Object { $_.HighestRated -eq $true } | Sort-Object -Property CvssScore -Descending
-        Write-Host "[+] Highest Rated Vulnerabilities - CVE >= $BaseScore" -ForegroundColor Green
+        if ( $IncludeCriticality ) {
+            Write-Host "[+] Highest Rated Vulnerabilities - CVE >= $BaseScore or Critical" -ForegroundColor Green
+        } else {
+            Write-Host "[+] Highest Rated Vulnerabilities - CVE >= $BaseScore" -ForegroundColor Green
+        }
         foreach ($CVE in $HighestRated) {
             $FormattedScore = Format-CvssScore -Score $CVE.CvssScore -MaxLengthOfCVEScore $MaxLengthOfCVEScore
             if ($IncludeCriticality) {
