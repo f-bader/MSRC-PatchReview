@@ -30,6 +30,10 @@ $ .\patch_review.ps1 2025-05 -Output json
 $ .\patch_review.ps1 2025-05 -Output psobject
 ```
 
+```bash
+$ .\patch_review.ps1 2025-05 -Output markdown
+```
+
 ### Change CVE Url
 
 By default the **MSRC** Url is used for the links but you can change it to **CVE.org** if you like.
