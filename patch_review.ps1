@@ -30,6 +30,7 @@
     - "human-readable": Outputs a formatted text report to the console.
     - "json": Outputs the data in JSON format.
     - "psobject": Outputs the data as PowerShell objects for further processing.
+    - "markdown": Outputs the data in Markdown format.
 
 .PARAMETER IncludeCriticality
     Include vulnerability criticality in the output (e.g., Critical, Important, Moderate, Low).
@@ -73,7 +74,7 @@ param(
 
     [float]$BaseScore = 8.0,
 
-    [ValidateSet("human-readable", "json", "psobject")]
+    [ValidateSet("human-readable", "json", "psobject", "markdown")]
     [string]$Output = "human-readable",
 
     [switch]$IncludeCriticality,
@@ -564,6 +565,90 @@ try {
                 Write-Host "  [-] $($CVE.CVE.PadRight($MaxLengthOfCVE)) - $FormattedScore - $($CVE.Title)$($CVELinkText)" -ForegroundColor Yellow
             }
         }
+    }
+
+    if ($Output -eq "markdown") {
+        # Markdown output
+        Write-Output "# $Title"
+        Write-Output ""
+        # Vulnerabilities by category
+        Write-Output "## Vulnerabilities by category"
+        Write-Output ""
+        Write-Output "**Total Vulnerabilities:** $($AllVulns.Count)"
+        foreach ($VulnType in $VulnTypes) {
+            $Count = Get-VulnerabilityCountByType -SearchType $VulnType -AllVulns $AllVulns
+            Write-Output "- **$VulnType Vulnerabilities:** $Count"
+        }
+        Write-Output ""
+        # Exploited vulnerabilities
+        $Exploited = $AllVulns | Where-Object { $_.Exploited -eq $true } | Sort-Object -Property @{Expression = "CvssScore"; Descending = $true }, @{Expression = "Title"; Descending = $false }
+        Write-Output "## Exploited Vulnerabilities"
+        Write-Output ""
+        Write-Output "| CVE | CVSS Score | Criticality | Customer Action Required | Title |"
+        Write-Output "|-----|------------|-------------|--------------------------|-------|"
+        foreach ($CVE in $Exploited) {
+            $FormattedScore = Format-CvssScore -Score $CVE.CvssScore -MaxLengthOfCVEScore 4
+            $CustomerActionRequiredText = if ($CVE.CustomerActionRequired) { "Yes" } else { "No" }
+            Write-Output "| $($CVE.CVE) | $FormattedScore | $($CVE.Criticality) | $CustomerActionRequiredText | [$($CVE.Title)]($($CVE.URL)) |"
+        }
+        Write-Output ""
+        # Publicly disclosed vulnerabilities
+        $PubliclyDisclosed = $AllVulns | Where-Object { $_.PubliclyDisclosed -eq $true } | Sort-Object -Property CvssScore -Descending
+        Write-Output "## Publicly Disclosed Vulnerabilities"
+        Write-Output ""
+        Write-Output "| CVE | CVSS Score | Criticality | Customer Action Required | Title |"
+        Write-Output "|-----|------------|-------------|--------------------------|-------|"
+        foreach ($CVE in $PubliclyDisclosed) {
+            $FormattedScore = Format-CvssScore -Score $CVE.CvssScore -MaxLengthOfCVEScore 4
+            $CustomerActionRequiredText = if ($CVE.CustomerActionRequired) { "Yes" } else { "No" }
+            Write-Output "| $($CVE.CVE) | $FormattedScore | $($CVE.Criticality) | $CustomerActionRequiredText | [$($CVE.Title)]($($CVE.URL)) |"
+        }
+        Write-Output ""
+        # Highest rated vulnerabilities
+        $HighestRated = $AllVulns | Where-Object { $_.HighestRated -eq $true } | Sort-Object -Property CvssScore -Descending
+        Write-Output "## Highest Rated Vulnerabilities"
+        Write-Output ""
+        Write-Output "| CVE | CVSS Score | Criticality | Customer Action Required | Title |"
+        Write-Output "|-----|------------|-------------|--------------------------|-------|"
+        foreach ($CVE in $HighestRated) {
+            $FormattedScore = Format-CvssScore -Score $CVE.CvssScore -MaxLengthOfCVEScore 4
+            $CustomerActionRequiredText = if ($CVE.CustomerActionRequired) { "Yes" } else { "No" }
+            Write-Output "| $($CVE.CVE) | $FormattedScore | $($CVE.Criticality) | $CustomerActionRequiredText | [$($CVE.Title)]($($CVE.URL)) |"
+        }
+        Write-Output ""
+        # Exploitation likely vulnerabilities
+        $Exploitation = $AllVulns | Where-Object { $_.ExploitationLikely -eq $true } | Sort-Object -Property CvssScore -Descending
+        Write-Output "## Exploitation Likely Vulnerabilities"
+        Write-Output ""
+        Write-Output "| CVE | CVSS Score | Criticality | Customer Action Required | Title |"
+        Write-Output "|-----|------------|-------------|--------------------------|-------|"
+        foreach ($CVE in $Exploitation) {
+            $FormattedScore = Format-CvssScore -Score $CVE.CvssScore -MaxLengthOfCVEScore 4
+            $CustomerActionRequiredText = if ($CVE.CustomerActionRequired) { "Yes" } else { "No" }
+            Write-Output "| $($CVE.CVE) | $FormattedScore | $($CVE.Criticality) | $CustomerActionRequiredText | [$($CVE.Title)]($($CVE.URL)) |"
+        }
+        Write-Output ""
+        # All vulnerabilities table
+        Write-Output ""
+        Write-Output "## All Vulnerabilities"
+        Write-Output ""
+        Write-Output "| CVE | CVSS Score | Criticality | Exploited | Exploitation Likely | Customer Action Required | Publicly Disclosed | Title |"
+        Write-Output "|-----|------------|-------------|-----------|---------------------|--------------------------|--------------------|-------|"
+        foreach ($CVE in ($OutputData | Where-Object { $_.CvssScore -ne "n/a" }  | Sort-Object -Property @{Expression = "CvssScore"; Descending = $true }, @{Expression = "Title"; Descending = $false } ) ) {
+            $ExploitedText = if ($CVE.Exploited) { "Yes" } else { "No" }
+            $ExploitationLikelyText = if ($CVE.ExploitationLikely) { "Yes" } else { "No" }
+            $CustomerActionRequiredText = if ($CVE.CustomerActionRequired) { "Yes" } else { "No" }
+            $PubliclyDisclosedText = if ($CVE.PubliclyDisclosed) { "Yes" } else { "No" }
+            Write-Output "| $($CVE.CVE) | $($CVE.CvssScore) | $($CVE.Criticality) | $ExploitedText | $ExploitationLikelyText | $CustomerActionRequiredText | $PubliclyDisclosedText | [$($CVE.Title)]($($CVE.URL)) |"
+        }
+        foreach ($CVE in ($OutputData | Where-Object { $_.CvssScore -eq "n/a" }  | Sort-Object -Property @{Expression = "Title"; Descending = $false } ) ) {
+            $ExploitedText = if ($CVE.Exploited) { "Yes" } else { "No" }
+            $ExploitationLikelyText = if ($CVE.ExploitationLikely) { "Yes" } else { "No" }
+            $CustomerActionRequiredText = if ($CVE.CustomerActionRequired) { "Yes" } else { "No" }
+            $PubliclyDisclosedText = if ($CVE.PubliclyDisclosed) { "Yes" } else { "No" }
+            Write-Output "| $($CVE.CVE) | $($CVE.CvssScore) | $($CVE.Criticality) | $ExploitedText | $ExploitationLikelyText | $CustomerActionRequiredText | $PubliclyDisclosedText | [$($CVE.Title)]($($CVE.URL)) |"
+        }
+        Write-Output ""
     }
 } catch {
     if ($_.Exception.Response.StatusCode) {
