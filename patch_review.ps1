@@ -225,28 +225,6 @@ function Get-VulnerabilityCriticality {
     }
 }
 
-function Get-ExploitedVulnerabilities {
-    param(
-        [array]$AllVulns
-    )
-
-    foreach ($Vuln in $AllVulns) {
-        foreach ($Threat in $Vuln.Threats) {
-            if ($Threat.Type -eq 1) {
-                $Description = $Threat.Description.Value
-                if ($Description -match 'Exploited:Yes') {
-                    @{
-                        CVE       = $Vuln.CVE
-                        Title     = $Vuln.Title.Value
-                        Exploited = $true
-                    }
-                    break
-                }
-            }
-        }
-    }
-}
-
 function Get-CustomerActionRequired {
     param(
         [array]$AllVulns
