@@ -20,7 +20,7 @@ $ .\patch_review.ps1 2025-05
 
 ### Change output format
 
-Default is **human-readable** which will write the output similat to the original python script to stdout. But if you would like to use the data in any way after the script is run you can use either **json** or **psobject**.
+Default is **human-readable** which writes output similar to the original Python script. For programmatic use, select **json** or **psobject**. Markdown output is also available.
 
 ```bash
 $ .\patch_review.ps1 2025-05 -Output json
@@ -42,10 +42,26 @@ By default the **MSRC** Url is used for the links but you can change it to **CVE
 $ .\patch_review.ps1 2025-05 -CVELink CVE.org
 ```
 
+Use `-CVELink None` to omit links from both human-readable and Markdown output.
+
 ### Change CVE BaseScore
 
 The highest rated CVEs are by default all CVEs above **8.0**. This can be changed easily to fit your needs.
 
 ```bash
 $ .\patch_review.ps1 2025-05 -BaseScore 9
+```
+
+## Tests
+
+Run the offline end-to-end regression suite:
+
+```powershell
+Invoke-Pester -Path ./tests/patch_review.Tests.ps1
+```
+
+Run static analysis with the repository settings (the colorized console renderer intentionally uses `Write-Host`):
+
+```powershell
+Invoke-ScriptAnalyzer -Path ./patch_review.ps1 -Settings ./PSScriptAnalyzerSettings.psd1
 ```

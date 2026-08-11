@@ -1,0 +1,42 @@
+{
+  "DocumentTitle": { "Value": "Sample Patch Tuesday" },
+  "Vulnerability": [
+    {
+      "CVE": "CVE-TEST-0001",
+      "Title": { "Value": "Critical no-score | title" },
+      "Threats": [
+        { "Type": 0, "ProductID": ["100"], "Description": [{ "Value": "Remote Code Execution" }] },
+        { "Type": 1, "Description": [{ "Value": "Exploited:Yes;Exploitation More Likely;Publicly Disclosed:Yes" }] },
+        { "Type": 3, "Description": [{ "Value": "Critical;Important" }] }
+      ],
+      "Notes": [{ "Title": "Customer Action Required", "Value": "No" }]
+    },
+    {
+      "CVE": "CVE-TEST-0002",
+      "Title": { "Value": "Edge vulnerability" },
+      "CVSSScoreSets": [{ "BaseScore": 9.8 }],
+      "Threats": [
+        { "Type": 0, "ProductID": ["11655"], "Description": [{ "Value": "Remote Code Execution" }] },
+        { "Type": 1, "Description": [{ "Value": "Exploitation More Likely" }] },
+        { "Type": 3, "Description": [{ "Value": "Moderate" }] }
+      ],
+      "Notes": [{ "Title": "Customer Action Required", "Value": "Yes" }]
+    },
+    {
+      "CVE": "CVE-TEST-0003",
+      "Title": { "Value": "Maximum score vulnerability" },
+      "CVSSScoreSets": [{ "BaseScore": 10.0 }],
+      "Threats": [
+        { "Type": 0, "ProductID": ["101"], "Description": [{ "Value": "Elevation of Privilege" }] },
+        { "Type": 1, "Description": [{ "Value": "Exploited:Yes" }] }
+      ],
+      "Notes": []
+    },
+    {
+      "CVE": "CVE-TEST-0004",
+      "Title": { "Value": "" },
+      "Threats": [],
+      "Notes": []
+    }
+  ]
+}
