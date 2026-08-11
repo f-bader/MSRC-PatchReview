@@ -1,0 +1,47 @@
+name: Pull request tests
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: PowerShell tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Report preinstalled PowerShell tooling
+        shell: pwsh
+        run: |
+          Get-Module -ListAvailable Pester, PSScriptAnalyzer |
+            Sort-Object Name, Version -Descending |
+            Select-Object Name, Version, Path |
+            Format-Table -AutoSize
+
+      - name: Run end-to-end regression tests
+        shell: pwsh
+        run: |
+          $result = Invoke-Pester -Path ./tests/patch_review.Tests.ps1 -PassThru -Output Detailed
+          if ($result.FailedCount -gt 0) {
+            throw "$($result.FailedCount) Pester test(s) failed."
+          }
+
+      - name: Run static analysis
+        shell: pwsh
+        run: |
+          $findings = @(Invoke-ScriptAnalyzer -Path ./patch_review.ps1 -Settings ./PSScriptAnalyzerSettings.psd1)
+          $findings | Format-Table -AutoSize | Out-Host
+
+          if ($findings.RuleName -contains 'PSAvoidUsingWriteHost') {
+            throw 'PSAvoidUsingWriteHost must remain suppressed for the colorized console renderer.'
+          }
+
+          $errors = @($findings | Where-Object Severity -eq 'Error')
+          if ($errors.Count -gt 0) {
+            throw "$($errors.Count) PSScriptAnalyzer error(s) found."
+          }
