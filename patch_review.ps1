@@ -82,13 +82,13 @@ function ConvertTo-ReportDate {
 }
 
 function Format-CvssScore {
-    param([AllowNull()][Nullable[double]]$Score)
+    param([AllowNull()][object]$Score)
 
-    if (-not $Score.HasValue) {
+    if ($null -eq $Score -or $Score -eq 'n/a') {
         return ' n/a'
     }
 
-    return $Score.Value.ToString('0.0', [System.Globalization.CultureInfo]::InvariantCulture).PadLeft(4)
+    return ([double]$Score).ToString('0.0', [System.Globalization.CultureInfo]::InvariantCulture).PadLeft(4)
 }
 
 function Get-SortedVulnerabilities {
