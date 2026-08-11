@@ -22,6 +22,7 @@ Describe 'ConvertFrom-CvrfDocument' {
     It 'sorts numeric CVSS values before missing values' {
         $sorted = Get-SortedVulnerabilities $report.Records
         @($sorted.CVE) | Should -Be @('CVE-TEST-0003', 'CVE-TEST-0002', 'CVE-TEST-0001')
+        (Format-CvssScore -Score ($sorted[1].SortScore)).Trim() | Should -Be '9.8'
     }
 
     It 'honors disabled CVE links in normalized and Markdown output' {
@@ -29,6 +30,7 @@ Describe 'ConvertFrom-CvrfDocument' {
         $markdown = @(Write-MarkdownReport $report) -join "`n"
         $markdown | Should -Not -Match '\]\(https?://'
         $markdown | Should -Match 'Critical no-score \\| title'
+        $markdown | Should -Match '\| CVE-TEST-0002 \| 9\.8 \|'
     }
 }
 
